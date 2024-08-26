@@ -8,6 +8,8 @@ import time
 import shutil
 import traceback
 
+from openpilot.common.conversions import Conversions as CV
+
 def is_running_on_comma():
   return os.path.exists("/data/persist")
 
@@ -24,6 +26,7 @@ if RUNNING_ON_COMMA:
   from common.params import Params
   params = Params()
   params_memory = Params("/dev/shm/params")
+  params_tracking = Params("/persist/tracking")
 else:
   # If running this on a computer, there is a bunch of fake stuff inside fixtures that
   # will substitute openpilot stuff
@@ -32,32 +35,32 @@ else:
   from .fixtures.fake_modules.params import Params
   params = Params()
   params_memory = params
-
+  params_tracking = params
 
 SCREENRECORD_PATH = f"{DATA_PATH}/data/media/0/videos/"
-ERROR_LOGS_PATH = f"{DATA_PATH}/data/community/crashes/"
+ERROR_LOGS_PATH = f"{DATA_PATH}/data/crashes/"
 FOOTAGE_PATH = f"{DATA_PATH}/data/media/0/realdata/"
 
 def video_to_gif(input_path, output_path) -> None:
-  """ 
+  """
   Creates a looping gif from the input_path sped
   up by a factor of 35.
   """
   if os.path.exists(output_path):
     return
-  
+
   print(f"Create gif from video: {input_path}")
   # First create a sped up mp4
   sped_up_path = output_path.replace(".gif", ".mp4")
   print(f"Create temporary sped up mp4: {sped_up_path}")
   run_ffmpeg(['-i', input_path, '-an', '-vf', 'setpts=PTS/35', sped_up_path])
-  
+
   # Next create a gif from the sped up mp4
   print(f"Create gif from sped up mp4: {output_path}")
   run_ffmpeg(["-i", sped_up_path, "-loop", "0", output_path])
   # Finally remove the sped up mp4
   os.remove(sped_up_path)
-  
+
 def video_to_png(input_path, output_path) -> None:
   """
   Creates a single frame png from the input_path
@@ -81,7 +84,7 @@ def run_ffmpeg(args) -> None:
   overwrite the output file if it already exists.
   """
   subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y'] + args)
-  
+
 def get_available_cameras(segment_path) -> list:
   """
   Checks the segment_path for camera files and returns a list with
@@ -115,10 +118,10 @@ def get_all_car_models() -> dict:
         model = " ".join(model.split(" ")[1:])
         if brand not in models:
           models[brand] = []
-        models[brand].append(model)    
+        models[brand].append(model)
   return models
-      
-      
+
+
 def convert_param_type(value: bytes | None):
   """
   Small util to convert the value of a param
@@ -147,11 +150,11 @@ def convert_settings_dict_to_array(settings: dict) -> list:
     if len(setting.get("toggles", [])) > 0:
       setting["toggles"] = convert_settings_dict_to_array(setting["toggles"])
   return list(settings.values())
-  
-  
+
+
 def get_settings_value(setting: dict) -> None:
   """
-  Reads the value for the setting, and loads all 
+  Reads the value for the setting, and loads all
   values for subsettings and toggles as well recursivly
   """
   value = params.get(setting["key"])
@@ -185,14 +188,14 @@ def find_setting(key, params):
 
 def load_settings():
   """
-  Load the params.json file, then load the actual values 
+  Load the params.json file, then load the actual values
   from the filesystem
   """
   with open(f"{DIR_OF_THIS_FILE}/params.json") as f:
     usedParams = json.load(f)
-  
+
   usedParams = convert_settings_dict_to_array(usedParams)
-  
+
   # Read the values from the module
   for param in usedParams:
     get_settings_value(param)
@@ -209,7 +212,7 @@ def save_setting(key, value) -> None:
   value = str(value)
   params.put(key, value)
   print(f"Saved param: {key} with value: {value}")
-  
+
   params_memory.put_bool("FrogPilotTogglesUpdated", True)
   time.sleep(1)
   params_memory.put_bool("FrogPilotTogglesUpdated", False)
@@ -239,10 +242,10 @@ def get_disk_usage():
       error = f"Failed getting disk usage for {path}"
       print(error)
       errors.append(error)
-  
+
   if len(errors) > 0:
     return results, errors
-  
+
   return results, None
 
 def get_drive_stats():
@@ -250,42 +253,46 @@ def get_drive_stats():
   Get the drive stats of the comma device
   """
   errors = []
-  statsValue = None
-  parsedStats = None
-  
+
   try:
-    statsValue = params.get("ApiCache_DriveStats").decode()
-    print("ApiCache_DriveStats: " + statsValue)
-  except Exception as e:
-    print(traceback.format_exc())
-    error = "Failed getting ApiCache_DriveStats. See logs for more info"
-    print(error)
-    errors.append(error)
+    stats_value = params.get("ApiCache_DriveStats", encoding='utf-8') or "{}"
+    print(f"ApiCache_DriveStats: {stats_value}")
+    stats = json.loads(stats_value)
+
+  except Exception:
+    error_message = f"Failed to retrieve or parse ApiCache_DriveStats: {traceback.format_exc()}"
+    print(error_message)
+    errors.append(error_message)
     return None, errors
-  
+
   try:
-    stats = json.loads(statsValue)
-  except Exception as e:
-    print(traceback.format_exc())
-    error = "Failed json parsing ApiCache_DriveStats. See logs for more info"
-    print(error)
-    errors.append(error)
-    return None, errors
-  
-  try:
-    stats["all"]["distance"] *= 1.60934
-    stats["week"]["distance"] *= 1.60934
+    is_metric = params.get_bool("IsMetric")
+    conversion_factor = CV.KPH_TO_MPH if not is_metric else 1
+    unit = "km" if is_metric else "miles"
+
+    def process_stats(timeframe):
+      return {
+        "distance": stats.get(timeframe, {}).get("distance", 0) * conversion_factor,
+        "drives": stats.get(timeframe, {}).get("routes", 0),
+        "hours": stats.get(timeframe, {}).get("minutes", 0) / 60,
+        "unit": unit
+      }
+
+    stats["all"] = process_stats("all")
+    stats["week"] = process_stats("week")
+
     stats["frogpilot"] = {
-      "distance": params.get("FrogPilotKilometers").decode(),
-      "minutes": params.get("FrogPilotMinutes").decode(),
-      "routes": params.get("FrogPilotDrives").decode()
+      "distance": params_tracking.get_int("FrogPilotKilometers") * conversion_factor,
+      "hours": params_tracking.get_int("FrogPilotMinutes") / 60,
+      "drives": params_tracking.get_int("FrogPilotDrives"),
+      "unit": unit
     }
-    
+
     print(stats)
     return stats, None
-  except Exception as e:
-    print(traceback.format_exc())
-    error = "Failed producing drive stats. See logs for more info"
-    print(error)
-    errors.append(error)
+
+  except Exception:
+    error_message = f"Failed processing drive stats: {traceback.format_exc()}"
+    print(error_message)
+    errors.append(error_message)
     return None, errors

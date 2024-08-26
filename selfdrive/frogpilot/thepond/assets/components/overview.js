@@ -55,12 +55,12 @@ export function Overview() {
                   )}
                 ${() =>
                   DriveStat(
-                    "This Week",
+                    "Past Week",
                     JSON.parse(state.data)?.driveStats?.week ?? {}
                   )}
                 ${() =>
                   DriveStat(
-                    "Frogpilot",
+                    "FrogPilot",
                     JSON.parse(state.data)?.driveStats?.frogpilot ?? {}
                   )}
               </div>
@@ -126,28 +126,32 @@ export function Overview() {
  * @param {string} title
  * @param {Object} stats
  * @param {number} stats.drives
- * @param {number} stats.minutes
  * @param {number} stats.distance
+ * @param {number} stats.hours
  * @returns
  */
 function DriveStat(title, stats) {
+  const formatNumber = (num) => {
+    return num.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  };
+
   return html`
     <div class="drivingStat">
       <h2>${title}</h2>
       <div>
-        <p>${stats.routes ?? "-"}</p>
-        <p>rides</p>
+        <p>${formatNumber(stats.drives || 0)}</p>
+        <p>drives</p>
       </div>
       <div>
-        <p>${Math.round(stats.minutes ?? "-")}</p>
-        <p>minutes</p>
+        <p>${formatNumber(stats.distance || 0)}</p>
+        <p>${stats.unit}</p>
       </div>
       <div>
-        <p>${Math.round(stats.distance ?? "-")}</p>
-        <p>km</p>
+        <p>${formatNumber(stats.hours || 0)}</p>
+        <p>hours</p>
       </div>
     </div>
-  `
+  `;
 }
 
 /**

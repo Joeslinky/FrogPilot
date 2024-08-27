@@ -9,6 +9,8 @@ import shutil
 import traceback
 
 from openpilot.common.conversions import Conversions as CV
+from openpilot.system.hardware import HARDWARE
+from openpilot.system.loggerd.config import get_available_bytes, get_used_bytes
 
 def is_running_on_comma():
   return os.path.exists("/data/persist")
@@ -222,31 +224,26 @@ def get_disk_usage():
   """
   Get the disk usage of the comma device
   """
-  errors = []
-  paths = ["/data"]
-  if not RUNNING_ON_COMMA:
-    paths = ["/"]
-  results = []
-  for path in paths:
-    try:
-      total, used, free = shutil.disk_usage(path)
-      results.append({
-        "mount": path,
-        "size": f"{total // (2**30)} GB",
-        "used": f"{used // (2**30)} GB",
-        "free": f"{free // (2**30)} GB",
-        "usedPercentage": f"{(used / total) * 100:.2f}%"
-      })
-    except Exception as e:
-      print(traceback.format_exc())
-      error = f"Failed getting disk usage for {path}"
-      print(error)
-      errors.append(error)
+  try:
+    free = get_available_bytes()
+    used = get_used_bytes()
+    total = used + free
 
-  if len(errors) > 0:
-    return results, errors
+    results = [{
+      "mount": HARDWARE.get_device_type(),
+      "size": f"{total // (2**30)} GB",
+      "used": f"{used // (2**30)} GB",
+      "free": f"{free // (2**30)} GB",
+      "usedPercentage": f"{(used / total) * 100:.2f}%"
+    }]
 
-  return results, None
+    return results, None
+
+  except Exception as e:
+    error_message = f"Failed getting disk usage: {e}"
+    print(traceback.format_exc())
+    print(error_message)
+    return [], [error_message]
 
 def get_drive_stats():
   """

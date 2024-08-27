@@ -1,6 +1,8 @@
 from flask import Flask, render_template, Response, request, send_from_directory
 from datetime import datetime
+
 import json
+import re
 import secrets
 
 from . import utils
@@ -115,10 +117,11 @@ def setup(app):
   def v2_routes():
     route_names = fleet_manager_helpers.get_routes_names(utils.FOOTAGE_PATH)
     routes = []
-    # Route names are strings in the format of "YYYY-MM-DD--HH-MM-SS"
-    for route_name in route_names:
-      route_date = datetime.strptime(route_name, '%Y-%m-%d--%H-%M-%S')
+    # Regex to match route names in the format "00000009--53e66ae16d"
+    valid_format_regex = re.compile(r'^[0-9a-fA-F]{8}--[0-9a-fA-F]{10}$')
 
+    for route_name in route_names:
+      # Since the format is not a date, we skip date parsing and just use the route name
       first_segment_path = f"{utils.FOOTAGE_PATH}{route_name}--0"
       qcamera_path = f"{first_segment_path}/qcamera.ts"
       gif_path = f"{first_segment_path}/preview.gif"
@@ -133,7 +136,6 @@ def setup(app):
         print(e)
 
       routes.append({
-        "date": route_date.isoformat(),
         "name": route_name,
         "gif": f"/thumbnails/{route_name}--0/preview.gif",
         "png": f"/thumbnails/{route_name}--0/preview.png"

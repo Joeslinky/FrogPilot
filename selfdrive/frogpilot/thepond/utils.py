@@ -12,6 +12,8 @@ from openpilot.common.conversions import Conversions as CV
 from openpilot.system.hardware import HARDWARE
 from openpilot.system.loggerd.config import get_available_bytes, get_used_bytes
 
+from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_functions import update_frogpilot_toggles
+
 def is_running_on_comma():
   return os.path.exists("/data/persist")
 
@@ -215,9 +217,7 @@ def save_setting(key, value) -> None:
   params.put(key, value)
   print(f"Saved param: {key} with value: {value}")
 
-  params_memory.put_bool("FrogPilotTogglesUpdated", True)
-  time.sleep(1)
-  params_memory.put_bool("FrogPilotTogglesUpdated", False)
+  update_frogpilot_toggles()
 
 
 def get_disk_usage():

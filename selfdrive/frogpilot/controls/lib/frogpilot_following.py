@@ -76,9 +76,7 @@ class FrogPilotFollowing:
         self.t_follow /= braking_offset
       self.slower_lead = braking_offset - far_lead_offset > 1
 
-    if frogpilot_toggles.human_following:
-      low_speed_offset = max(CRUISING_SPEED - v_ego, 1)
-
-      self.acceleration_jerk /= low_speed_offset
-      self.danger_jerk = self.base_danger_jerk / low_speed_offset
-      self.speed_jerk /= low_speed_offset
+    if frogpilot_toggles.human_following and v_ego < CRUISING_SPEED:
+      self.acceleration_jerk /= CRUISING_SPEED
+      self.danger_jerk = self.base_danger_jerk / CRUISING_SPEED
+      self.speed_jerk /= CRUISING_SPEED
